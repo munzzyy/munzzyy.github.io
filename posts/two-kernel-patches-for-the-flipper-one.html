@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two kernel patches for the Flipper One</title>
+<meta name="description" content="A devicetree VBUS fix where my first read was wrong, and a dwc3 gadget fix whose answer had been sitting on the mailing list since 2022.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · embedded and firmware security</p>
+</header>
+
+<h1 class="post">Two kernel patches for the Flipper One</h1>
+<p class="date">2026-08-10</p>
+
+<article>
+<p>The Flipper One runs Linux on a Rockchip RK3576, and the kernel tree is young enough that real bugs are still findable by reading. In the last two weeks I sent two fixes. Both are small. Both took much longer to understand than to write, which is the part worth writing down.</p>
+
+<h2>The VBUS that worked by accident</h2>
+
+<p>The board wires 5V to the Type-C up port, and the devicetree said so: <code>vbus-supply</code> on the USB mux node, pointing at the right regulator. It looked correct. The driver never read it.</p>
+
+<p>The mux is a TI HD3SS3220, and its driver doesn't look for a VBUS regulator on its own node. It walks the endpoint graph to whatever sits on the other end and asks that node instead:</p>
+
+<pre><code>ep = fwnode_graph_get_next_endpoint(dev_fwnode(hd3ss3220->dev), NULL);
+connector = fwnode_graph_get_remote_port_parent(ep);
+...
+vbus = devm_of_regulator_get_optional(hd3ss3220->dev,
+                                      to_of_node(connector), "vbus");</code></pre>
+
+<p>On this board the other end is the connector node. So the lookup came back empty, the driver's vbus pointer stayed NULL, and its whole enable/disable path was dead code. The only reason the port had power at all was a <code>regulator-always-on</code> on the supply, which is the devicetree way of saying we gave up.</p>
+
+<p>The schema checker had an opinion too. <code>CHECK_DTBS=y</code> flagged <code>vbus-supply</code> as not a valid property of the mux binding at all. The property wasn't just unread, it wasn't allowed to sit there in the first place.</p>
+
+<p>My first read of the issue was wrong, and that's the interesting part. I assumed the fix required adding a <code>connector</code> child node under the mux, because that's the shape the binding examples show. Then I traced the graph walk properly: with no child node present, the driver already resolves to the board's connector node, and the connector binding explicitly allows <code>vbus-supply</code>. The real fix was tiny. Move the property to the connector, drop <code>regulator-always-on</code>, and let the driver own the pin. The comment above that regulator even asked for exactly this once VBUS got wired up. Someone left a note for the future, and the future turned out to be me.</p>
+
+<p>Verification, because a devicetree patch you haven't checked is a claim, not a fix: the board dtb builds, <code>CHECK_DTBS=y</code> errors before the change and is quiet after, and <code>checkpatch --strict</code> comes back clean. Whether the port still powers up on real hardware is the maintainers' half of the deal. I don't own a board.</p>
+
+<h2>The error that wasn't</h2>
+
+<p>The second one started as a log line. Every gadget teardown printed <code>request ... was not queued to ep0out</code> with an <code>-EINVAL</code> behind it. Harmless looking. But an error that fires on every normal shutdown trains everyone to ignore errors, and that's how the real one gets missed later.</p>
+
+<p>The mechanism: when the f_fs gadget function unbinds, it dequeues its ep0 request as cleanup. By that point the request has already completed. The dwc3 dequeue path walks its three request lists, finds the request on none of them, and concludes you're dequeuing something that was never queued. That conclusion is usually right. Here it fires in the normal case.</p>
+
+<p>This exact bug reached the mainline list in 2022, and the thread is better than the patch that came out of it, because no patch came out of it. It ended on the dwc3 maintainer's observation that <code>functionfs_unbind</code> only runs after a disconnect, and soft-disconnect already gives back every pending control transfer. In other words: by dequeue time, completed-and-gone is the expected state, not a fault. The answer sat in the archive for four years waiting for someone to hit the same line.</p>
+
+<p>The tempting fix is what the cdnsp driver did for the same shape of problem: return success whenever <code>usb_request::status</code> isn't <code>-EINPROGRESS</code>. But that field is zero straight out of allocation, so the check also blesses a request that was never queued anywhere. The 2022 review had asked for the opposite: validate the request, and keep erroring on the invalid ones.</p>
+
+<p>dwc3 already tracks what it needs. Every request carries the driver's own status: unknown at allocation, queued when it enters an endpoint, completed when giveback runs. Reaching the end of dequeue with completed means this request lived and died on this endpoint and the dequeue is a no-op. Anything else keeps the error. That one distinction, completed here versus never here, is the entire patch.</p>
+
+<p>I first shaped it as a fix carried in the Flipper tree. That was the wrong shape too: this tree doesn't carry what belongs upstream, so I reworked it to apply to mainline as is, and it can go to linux-usb once the maintainers are happy with it. Build checks: <code>gadget.o</code> compiles clean for arm64, sparse reports nothing, <code>checkpatch --strict</code> is zero across the board. The observable effect, the log line disappearing at teardown, needs hardware I don't have.</p>
+
+<h2>What I keep relearning</h2>
+
+<p>Both bugs looked like config problems and both fixes came from reading the driver instead of pattern-matching on examples. The devicetree one broke because a property sat on the node that looked right rather than the node the code reads. The gadget one stayed broken for years because the fix everyone reaches for first, return success and move on, is the one the maintainer had already rejected. The archive knew. Reading beats guessing, in both directions.</p>
+
+<p>Both patches are in review: <a href="https://github.com/flipperdevices/flipper-linux-kernel/pull/21">the VBUS wiring</a> and <a href="https://github.com/flipperdevices/flipper-linux-kernel/pull/22">the dequeue fix</a>.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>
