@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>U-Boot never had a btrfs test</title>
+<meta name="description" content="Writing the filesystem tests U-Boot was missing: a reproducer that had to be synthesized byte by byte, a regression the suite caught, and three patches now in mainline.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · embedded and firmware security</p>
+</header>
+
+<h1 class="post">U-Boot never had a btrfs test</h1>
+<p class="date">2026-08-10</p>
+
+<article>
+<p>U-Boot can boot from btrfs and has been able to for years. Its filesystem test suite covers fat12, fat16, fat32, exfat, ext4, squashfs and erofs. It has never run a single btrfs test. Grep for btrfs under <code>test/</code> and nothing comes back.</p>
+
+<p>The gap is not hypothetical. Armbian shipped bootloaders with btrfs zstd decompression broken and users hit it on real boards (<a href="https://github.com/armbian/build/issues/9651">armbian/build#9651</a>), while nothing in the U-Boot tree noticed, because nothing in the tree was looking.</p>
+
+<p>I care because the Flipper One boots Debian from btrfs, snapshots and all, so U-Boot has to read a kernel and a devicetree off a btrfs volume before anything else exists. I've been sending fixes into that bring-up for a few weeks. This thread of it started with the missing tests and ended today with Tom Rini applying three of my patches to mainline U-Boot. The middle is the part worth writing down.</p>
+
+<h2>Writing the missing suite</h2>
+
+<p>The suite itself is not clever. One image per compression algorithm: none, zlib, lzo, zstd. Every file is read back and crc32-compared against the source. The file sizes are picked to hit the separate read paths in <code>fs/btrfs/inode.c</code>: an inline extent, the single sector btrfs leaves uncompressed, one compressed regular extent, one at the 128K compressed maximum, and a two-extent file whose length is not block aligned.</p>
+
+<p>The one deliberate choice: images are built with <code>mkfs.btrfs --rootdir</code>, which needs no root and no loop mount. A filesystem test that needs root is a test that CI quietly skips.</p>
+
+<h2>The reproducer nobody had</h2>
+
+<p>The zstd bug came with a catch. <code>mkfs.btrfs</code> cannot produce the layout that triggers it, because btrfs-progs writes inline extents whose compressed frame already matches <code>ram_bytes</code>. Only the kernel writes the shape that fails, and getting a kernel-written image means mounting btrfs, which means root, which means the reproducer doesn't fit in the suite.</p>
+
+<p>So the test synthesizes the kernel's layout instead. Take a clean image, rewrite <code>ram_bytes</code> in the extent item and the inode size in place, and recompute the leaf's crc32c. Only fixed-width fields change, so no items move, and <code>btrfs check</code> still reports no errors. The crc32c code proves itself against the checksum btrfs already stored before it's allowed to write anything. Stock U-Boot then fails the readback exactly the way armbian's users saw it:</p>
+
+<pre><code>zstd_decompress: failed to decompress: 70
+BTRFS: An error occurred while reading file /inline.bin</code></pre>
+
+<p>Error 70 is <code>dstSize_tooSmall</code>. The fix for that one is in the Flipper One's U-Boot tree and got a mention in <a href="https://docs.flipper.net/one/dev-log/8">Dev Log #8</a>; its mainline trip, together with the suite, is still in my queue.</p>
+
+<h2>What the suite caught</h2>
+
+<p>U-Boot recently moved btrfs onto its generic directory-listing code (<a href="https://lore.kernel.org/r/20260626-btrfs-readdir-v2-0-7dd43f72d1b4@flipper.net">this series</a>). Good change, less custom code. I ran the new suite on top of it and four of the five tests went red.</p>
+
+<p><code>btrfs_readdir()</code> zeroes the dirent and fills in only the name and the type. <code>dent-&gt;size</code> stays 0, so every file on a btrfs volume lists as empty:</p>
+
+<pre><code>=&gt; ls host 0 /
+        0   f_192k.bin
+        0   small_3k.bin</code></pre>
+
+<p>Reads still worked, because <code>btrfs_read()</code> looks the size up on its own. But every other filesystem in the tree fills <code>dent-&gt;size</code> in its readdir: ext4, exfat, erofs, squashfs, fat. And it goes past cosmetics. The EFI layer's <code>dir_read()</code> copies <code>dent-&gt;size</code> into both <code>file_size</code> and <code>physical_size</code>, so an EFI application enumerating a btrfs directory sees nothing but zero-byte files.</p>
+
+<p>The fix rides on what the code already had. <code>btrfs_next_dir_entry()</code> has the directory item mapped when it builds the entry, so hand the key it points at back to the caller and use it to reach the inode item and its size. A subvolume entry points at a root item and has no size of its own; it stays 0.</p>
+
+<pre><code>=&gt; ls host 0 /
+   196608   f_192k.bin
+     3000   small_3k.bin</code></pre>
+
+<h2>Review found the second bug</h2>
+
+<p>I sent that one fix to the list. Qu Wenruo, who maintains btrfs in the kernel, reviewed the bootloader patch, and while he was in there he pointed at something I had walked right past: U-Boot's copy of <code>btrfs_search_slot()</code> returns on error with the nodes it descended through still attached to the path. The kernel's version releases them. Callers written against the kernel's convention, and <code>btrfs_size()</code> is one, bail out on a failed search and leak references they don't know they hold.</p>
+
+<p>His observation became the second patch, with his Suggested-by on it. Folding the two copies of the same inode-size lookup into one helper became the third. All three carry his Reviewed-by, which is a kernel filesystem maintainer reviewing bootloader code, because the on-disk format doesn't care whose repo you're in. Today the series landed in mainline: <a href="https://github.com/u-boot/u-boot/commit/1cf825afd0d7">the readdir sizes</a>, <a href="https://github.com/u-boot/u-boot/commit/1a5c8af2d4e4">the path release</a>, <a href="https://github.com/u-boot/u-boot/commit/a11f8659f451">the deduplication</a>.</p>
+
+<h2>The part that isn't done</h2>
+
+<p>The suite that found all of this is not in mainline yet, so U-Boot's btrfs is exactly as untested today as when I started, and the next regression is still free. The three patches are the output; the suite is the machine that produced them, and it's the next thing I send.</p>
+
+<p>What I keep relearning, part two: the fastest way to make a maintainer trust a fix is to hand them the red test that goes green with it. Nobody had to take my word for any of this. They could run it.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>
