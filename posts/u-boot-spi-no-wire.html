@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spi with no wire in one direction</title>
+<meta name="description" content="A U-Boot binding allowed a bus width of zero and nothing downstream understood what that meant. Two patches later, mainline does.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · embedded and firmware security</p>
+</header>
+
+<h1 class="post">SPI with no wire in one direction</h1>
+<p class="date">2026-08-29</p>
+
+<article>
+<p>The Flipper One's display is SPI with no MISO line at all. The controller only ever gets written to, so the board never routes a receive wire, and the pin that would have carried it is doing something else: it is the end-of-frame GPIO instead. This is a normal thing for a write-only display to do. It is not a normal thing for U-Boot's SPI stack to expect.</p>
+
+<p>The devicetree binding for SPI peripherals already has a way to say this: <code>spi-rx-bus-width = &lt;0&gt;</code>, zero meaning no wire in that direction. Linux has understood zero since 5.12. U-Boot's copy of the same binding parses the property and then has nowhere to put a zero. <code>spi_slave_of_to_plat()</code> switches on 1, 2, 4, 8 and falls through to a default case for anything else, which prints a warning on every boot and quietly drops the fact that the wire is missing.</p>
+
+<h2>Giving zero a place to go</h2>
+
+<p>Linux's answer was two new mode bits, <code>SPI_NO_TX</code> and <code>SPI_NO_RX</code>, added in d962608ce218. U-Boot didn't have them. The first patch adds the same two bits at the first free positions in <code>include/spi.h</code> and maps a bus width of 0 onto them in the DT parsing switch, so the case that used to fall through to a warning now records what the board actually says.</p>
+
+<p>Recording the bit is not the same as enforcing it, and Quentin Schulz caught that in review: nothing stops a caller from asking for a transfer in a direction that has no wire, and if the check only lives in one driver, every other controller driver needs to reinvent it. Linux enforces this centrally in <code>__spi_validate()</code>, so the patch does the same in <code>dm_spi_xfer()</code>:</p>
+
+<pre><code>if (din && (slave_plat->mode & SPI_NO_RX))
+    return -EINVAL;
+if (dout && (slave_plat->mode & SPI_NO_TX))
+    return -EINVAL;</code></pre>
+
+<p>A din on a no-RX device or a dout on a no-TX device now fails before it reaches any driver, instead of each driver having to know to check. A sandbox test exercises both rejections directly, flipping the mode bits on a bound device and asserting the transfer comes back -EINVAL.</p>
+
+<h2>The FIFO that was still running</h2>
+
+<p>The mode bit reaching the core is only half the board's problem, because the Rockchip SPI controller itself was still running full duplex no matter what the device asked for. <code>rockchip_spi_claim_bus()</code> hardcoded <code>TMOD_TR</code>, transmit and receive together, and the transfer loop always set <code>toread = todo</code>, so it clocked and waited on receive bytes that nobody was ever going to read because there was no wire to read them on.</p>
+
+<p>The controller already has a transfer-mode field built for exactly this: TMOD_TR for both directions, TMOD_TO for transmit-only, TMOD_RO for receive-only, each one leaving the unused FIFO out of the transfer instead of just ignoring what comes back from it. The second patch picks the mode from the same bits the first patch set:</p>
+
+<pre><code>static u32 rkspi_base_tmod(struct rockchip_spi_priv *priv)
+{
+    if (priv->mode & SPI_NO_RX)
+        return TMOD_TO;
+    if (priv->mode & SPI_NO_TX)
+        return TMOD_RO;
+    return TMOD_TR;
+}</code></pre>
+
+<p>Switching the transfer mode alone would have hung the board. The 8-bit transfer loop paces itself on the receive FIFO filling up, and with no receive wire that FIFO never fills, so a loop that still waited on it would wait forever. The fix is to leave <code>toread</code> at zero when <code>SPI_NO_RX</code> is set and let the existing <code>wait_till_not_busy()</code> at the end of the chunk carry the completion, the same call that already covers a transmit-only tail today. One more spot restored a hardcoded <code>TMOD_TR</code> after a read-only transfer, which would have quietly undone the device's own mode on the next claim; that now restores from <code>rkspi_base_tmod()</code> too.</p>
+
+<h2>Landing it</h2>
+
+<p>The series went through a few rounds before Quentin was happy with it, mostly the central-validation point above. Alexey Charkov tested the Rockchip half on actual Flipper One hardware. Quentin, custodian for u-boot-rockchip, applied v4 on 2026-08-29 with the usual b4-ty automated notice, no reply needed on a message that just says applied, thanks:</p>
+
+<ul>
+<li><a href="https://github.com/u-boot/u-boot/commit/300cdfa08c53">spi: Handle spi-{tx,rx}-bus-width 0 as SPI_NO_TX/SPI_NO_RX</a></li>
+<li><a href="https://github.com/u-boot/u-boot/commit/ed58bafd0b24">spi: rockchip: skip the unused FIFO direction on a one-wire device</a></li>
+</ul>
+
+<p>Both land in the 2027.01 release. The board still has to actually boot and show a frame on real hardware for the fix to prove itself the rest of the way, and that half of the deal was Alexey's already.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>
