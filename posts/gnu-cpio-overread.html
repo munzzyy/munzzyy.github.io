@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An overread GNU cpio didn't have (yet)</title>
+<meta name="description" content="A patch got rejected on a correct POSIX argument, which turned out not to be the argument that mattered. Reframing it around malformed input is what got it fixed.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · embedded and firmware security</p>
+</header>
+
+<h1 class="post">An overread GNU cpio didn't have (yet)</h1>
+<p class="date">2026-08-29</p>
+
+<article>
+<p>GNU cpio reads tar archives too, and its tar-reading code lives in <code>src/tar.c</code>. A ustar header's uname and gname fields are 32 bytes, fixed size, and the format does not require them to be NUL-terminated inside a conforming archive. <code>read_in_tar_header</code> passed those 32 bytes straight to <code>getuidbyname</code> and <code>getgidbyname</code>, which hand them to <code>getpwnam</code>/<code>getgrnam</code> as C strings. Feed it a header where uname, gname, and the bytes after them in the 512-byte record are all non-NUL, and the lookup walks off the end of a stack buffer looking for a terminator that isn't there. Reachable with an ordinary <code>cpio -itv</code> on a crafted archive.</p>
+
+<p>I sent a small patch: copy the fields into local buffers sized one byte larger than the record field, terminate the copy, look those up instead of the raw pointer into the header. Ten lines changed, under the FSF's tiny-change threshold, so no copyright assignment paperwork was needed to send it.</p>
+
+<h2>The rejection</h2>
+
+<p>Maintainer Sergey Poznyakoff wrote back and pushed back on the framing, not the fix: uname and gname are NUL-terminated per POSIX for a conforming ustar archive, so in his reading there was no bug to fix, just defense against something the format already rules out.</p>
+
+<p>He is right about that. POSIX ustar does define the fields that way for an archive that follows the spec. The mistake would have been arguing the POSIX point, because I would have lost it and been correct to lose it.</p>
+
+<h2>The reframe</h2>
+
+<p>The patch was never about conforming archives. It was about what cpio does when it is handed one that doesn't conform, and cpio is exactly the kind of tool that gets pointed at archives nobody has vouched for. I checked HEAD before replying, because a rejection you haven't re-verified is just a maintainer's opinion, not a fact: the read side was still unguarded, unchanged from what I'd found. Then I went looking for how Sergey himself had handled the identical shape of problem before, and found it: commit e8931bebb9e1, his own fix to the write side of the same code, bounding a <code>strcpy</code> into <code>tar_hdr->uname</code>/<code>tar_hdr->gname</code> with a helper that truncates to the field size:</p>
+
+<pre><code>static void
+tarnamecpy (char *buf, char const *name, size_t size)
+{
+  strncpy (buf, name, size-1);
+  buf[size-1] = 0;
+}</code></pre>
+
+<p>That fix does not lean on POSIX either. It bounds a copy against malformed or oversized input because bounding it costs nothing and leaving it unbounded crashes. The read side had the mirror-image problem and none of the mirror-image fix. I wrote back conceding the POSIX point exactly as he'd stated it, then reframed around malformed input, and pointed at his own write-side commit as precedent for treating this as worth fixing regardless of what a conforming archive guarantees.</p>
+
+<h2>What came back</h2>
+
+<p>Sergey conceded: "You are right." He installed his own fix rather than mine, and it's the better one: instead of my fixed-size copy-and-terminate, he uses <code>memchr</code> to look for a NUL within the field and ignores the name entirely if none is found, rather than silently truncating a name that happens to fill the field. Same bound, cleaner behavior on the edge case. That's <a href="https://git.savannah.gnu.org/cgit/cpio.git/commit/?id=e5bb73f8c2f3">commit e5bb73f8c2f3</a>, landed 2026-08-29.</p>
+
+<h2>What I keep relearning</h2>
+
+<p>A maintainer's rejection deserves the same scrutiny as their suggestions. Sergey wasn't wrong about POSIX, and if I'd argued that point I'd have been arguing against someone who was right. The actual disagreement was one level up, about which inputs the fix needed to survive, and the maintainer's own commit history was the evidence for that, not mine.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>
