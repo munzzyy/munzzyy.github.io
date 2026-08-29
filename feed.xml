@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Cole Munz</title>
+  <link>https://munzzyy.github.io/</link>
+  <description>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. Build log: what broke, what I tried, what review caught.</description>
+  <language>en-us</language>
+  <lastBuildDate>Sat, 29 Aug 2026 00:00:00 GMT</lastBuildDate>
+
+  <item>
+    <title>SPI with no wire in one direction</title>
+    <link>https://munzzyy.github.io/posts/u-boot-spi-no-wire.html</link>
+    <guid>https://munzzyy.github.io/posts/u-boot-spi-no-wire.html</guid>
+    <pubDate>Sat, 29 Aug 2026 00:00:00 GMT</pubDate>
+    <description>A U-Boot binding allowed a bus width of zero and nothing downstream understood what that meant. Two patches later, mainline does.</description>
+  </item>
+
+  <item>
+    <title>An overread GNU cpio didn't have (yet)</title>
+    <link>https://munzzyy.github.io/posts/gnu-cpio-overread.html</link>
+    <guid>https://munzzyy.github.io/posts/gnu-cpio-overread.html</guid>
+    <pubDate>Sat, 29 Aug 2026 00:00:00 GMT</pubDate>
+    <description>A patch got rejected on a correct POSIX argument, which turned out not to be the argument that mattered. Reframing it around malformed input is what got it fixed.</description>
+  </item>
+
+  <item>
+    <title>U-Boot never had a btrfs test</title>
+    <link>https://munzzyy.github.io/posts/u-boot-never-had-a-btrfs-test.html</link>
+    <guid>https://munzzyy.github.io/posts/u-boot-never-had-a-btrfs-test.html</guid>
+    <pubDate>Mon, 10 Aug 2026 00:00:00 GMT</pubDate>
+    <description>Writing the filesystem tests U-Boot was missing: a reproducer that had to be synthesized byte by byte, a regression the suite caught, and three patches now in mainline.</description>
+  </item>
+
+  <item>
+    <title>Two kernel patches for the Flipper One</title>
+    <link>https://munzzyy.github.io/posts/two-kernel-patches-for-the-flipper-one.html</link>
+    <guid>https://munzzyy.github.io/posts/two-kernel-patches-for-the-flipper-one.html</guid>
+    <pubDate>Mon, 10 Aug 2026 00:00:00 GMT</pubDate>
+    <description>A devicetree VBUS fix where my first read was wrong, and a dwc3 gadget fix whose answer had been sitting on the mailing list since 2022.</description>
+  </item>
+
+</channel>
+</rss>
