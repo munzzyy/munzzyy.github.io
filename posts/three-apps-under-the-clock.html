@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three apps under the clock</title>
+<meta name="description" content="A Pixel Fold's outer screen showed Sepia's top bar behind the clock and the camera. Android 15 made every app edge to edge, and three of mine had never noticed.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · Android apps</p>
+</header>
+
+<h1 class="post">Three apps under the clock</h1>
+<p class="date">2026-09-30</p>
+
+<article>
+<p><a href="https://github.com/munzzyy/sepia/issues/6">Sepia #6</a> was one line long: on a Pixel Fold's outer screen, the app ran up behind the clock, the battery and the camera cutout.</p>
+
+<p>Sepia, Magpie and Sweep are built exactly the same way: each is a web app in a WebView inside a small Kotlin wrapper that calls <code>setContentView(webView)</code> and paints the status bar to match the page. That pattern worked for years on Android. It stopped being fine when the apps started targeting SDK 35, because from Android 15 on, an app that targets 35 or higher gets laid out edge to edge whether it wants that or not, and the status bar color it sets is quietly ignored. All three target 36, so all three were drawing under the clock on every recent phone, and the Fold's outer screen just made it obvious.</p>
+
+<h2>Measuring it with the screen blanked</h2>
+
+<p>A screenshot was never going to show it. These apps set <code>FLAG_SECURE</code>, because what they show shouldn't end up in the recents thumbnail or a screenshot, so any capture comes back solid black. uiautomator is fine with that. A dump of the view tree on an Android 16 emulator put the WebView at <code>[0,0][1080,2400]</code>, the entire screen, while the status bar ended at 74 pixels.</p>
+
+<h2>The fix, and the wrong fix</h2>
+
+<p>Padding the WebView would have looked right, since the page moves down, and it would have been wrong in a way you only find by tapping things. WebView padding shifts where Chromium paints but not where it thinks your finger landed, so a button that appears to clear the status bar takes its touches in the wrong place. The padding goes on a <code>FrameLayout</code> around the WebView, fed by the window insets:</p>
+
+<pre><code>ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+    val safe = insets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or
+            WindowInsetsCompat.Type.displayCutout() or
+            WindowInsetsCompat.Type.ime(),
+    )
+    view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+    insets
+}</code></pre>
+
+<p>I included the display cutout on purpose. On that emulator the cutout's inset goes down to 136 pixels, well past the 74-pixel status bar, and in landscape the cutout sits on the side, where the status bar inset has nothing to say. With the fix, the WebView sat at <code>[0,136][1080,2274]</code> in portrait and stayed clear of the side cutout in landscape. On an Android 13 image the system still fits content under the bars by itself, and the bounds lined up with the bars exactly, which is how I know older phones don't get padded twice.</p>
+
+<p>Sepia 0.4.3, Magpie 0.4.5 and Sweep 0.5.2 went out the same day. Each has a test now that fails if the WebView goes back to filling the screen.</p>
+
+<h2>The part I should have caught</h2>
+
+<p>LiftMath and Puzzle Press are built the same way, and both already had this fix, with a comment right above it explaining the padding trap. I wrote that comment. The three privacy apps never got it. Next time one project teaches me something like this, I'm grepping the others for the same line before somebody with a Fold has to.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>

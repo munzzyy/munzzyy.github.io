@@ -13,7 +13,7 @@
 <main>
 <header class="site">
   <h1>Cole Munz</h1>
-  <p>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. This is the build log: what broke, what I tried, what review caught.</p>
+  <p>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. Also the Android apps I ship. This is the build log: what broke, what I tried, what review caught.</p>
   <nav class="top">
     <a href="https://github.com/munzzyy">GitHub</a>
     <a href="https://github.com/sponsors/munzzyy">Sponsors</a>
@@ -23,20 +23,60 @@
 
 <ul class="posts">
   <li>
-    <span class="date">2026-08-29</span>
-    <a href="posts/u-boot-spi-no-wire.html">SPI with no wire in one direction</a>
+    <span class="date">2026-09-30</span>
+    <div>
+      <a href="posts/the-five-minute-freeze.html">The five-minute freeze</a>
+      <p class="summary">Location sharing kept stopping on locked Pixels, and every test I ran said it was fixed. None of those tests ran past five minutes, which is when Chromium freezes a hidden page.</p>
+    </div>
+  </li>
+  <li>
+    <span class="date">2026-09-30</span>
+    <div>
+      <a href="posts/a-relay-without-cloudflare.html">A relay that doesn't need Cloudflare</a>
+      <p class="summary">Starling's listing said self-hostable. Someone pointed out that meant self-hostable on Cloudflare, and that the listing never said who hosted the default relay. Both got fixed.</p>
+    </div>
+  </li>
+  <li>
+    <span class="date">2026-09-30</span>
+    <div>
+      <a href="posts/a-second-place-your-location-goes.html">A second place your location goes</a>
+      <p class="summary">Someone wanted Starling to also feed their own Reitti and Home Assistant. Sending the data was easy. Making sure the feature can't be turned against the person holding the phone took the thought.</p>
+    </div>
+  </li>
+  <li>
+    <span class="date">2026-09-30</span>
+    <div>
+      <a href="posts/three-apps-under-the-clock.html">Three apps under the clock</a>
+      <p class="summary">A Pixel Fold's outer screen showed Sepia's top bar behind the clock and the camera. Android 15 made every app edge to edge, and three of mine had never noticed.</p>
+    </div>
   </li>
   <li>
     <span class="date">2026-08-29</span>
-    <a href="posts/gnu-cpio-overread.html">An overread GNU cpio didn't have (yet)</a>
+    <div>
+      <a href="posts/u-boot-spi-no-wire.html">SPI with no wire in one direction</a>
+      <p class="summary">A U-Boot binding allowed a bus width of zero and nothing downstream understood what that meant. Two patches later, mainline does.</p>
+    </div>
+  </li>
+  <li>
+    <span class="date">2026-08-29</span>
+    <div>
+      <a href="posts/gnu-cpio-overread.html">An overread GNU cpio didn't have (yet)</a>
+      <p class="summary">A patch got rejected on a correct POSIX argument, which turned out not to be the argument that mattered. Reframing it around malformed input is what got it fixed.</p>
+    </div>
   </li>
   <li>
     <span class="date">2026-08-10</span>
-    <a href="posts/u-boot-never-had-a-btrfs-test.html">U-Boot never had a btrfs test</a>
+    <div>
+      <a href="posts/u-boot-never-had-a-btrfs-test.html">U-Boot never had a btrfs test</a>
+      <p class="summary">Writing the filesystem tests U-Boot was missing: a reproducer that had to be synthesized byte by byte, a regression the suite caught, and three patches now in mainline.</p>
+    </div>
   </li>
   <li>
     <span class="date">2026-08-10</span>
-    <a href="posts/two-kernel-patches-for-the-flipper-one.html">Two kernel patches for the Flipper One</a>
+    <div>
+      <a href="posts/two-kernel-patches-for-the-flipper-one.html">Two kernel patches for the Flipper One</a>
+      <p class="summary">A devicetree VBUS fix where my first read was wrong, and a dwc3 gadget fix whose answer had been sitting on the mailing list since 2022.</p>
+    </div>
   </li>
 </ul>
 

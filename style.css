@@ -61,6 +61,7 @@ ul.posts li {
 ul.posts .date { flex: 0 0 auto; }
 ul.posts a { color: var(--ink); text-decoration: none; font-weight: 550; }
 ul.posts a:hover { color: var(--accent); }
+ul.posts .summary { margin: .2rem 0 0; color: var(--muted); font-size: .92rem; line-height: 1.5; }
 .apps-heading { font-size: 1.1rem; margin: 2.5rem 0 0; letter-spacing: -.01em; }
 ul.posts.apps a { flex: 0 0 auto; }
 ul.posts.apps .app-desc { color: var(--muted); font-size: .92rem; }

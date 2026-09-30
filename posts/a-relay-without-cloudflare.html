@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A relay that doesn't need Cloudflare</title>
+<meta name="description" content="Starling's listing said self-hostable. Someone pointed out that meant self-hostable on Cloudflare, and that the listing never said who hosted the default relay. Both got fixed.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · Android apps</p>
+</header>
+
+<h1 class="post">A relay that doesn't need Cloudflare</h1>
+<p class="date">2026-09-30</p>
+
+<article>
+<p>Starling's F-Droid listing had a "Self-hostable" heading and told people to "Run your own." That was true in about the narrowest way possible. The relay was a Cloudflare Worker with a D1 table, so running your own meant getting a Cloudflare account. <a href="https://github.com/munzzyy/starling/issues/9">Issue #9</a> pointed that out, and then made the point that actually stung: the ciphertext is unreadable, sure, but everyone on the default relay was still sending their IP address and timing through Cloudflare, and nowhere did the listing say who hosted it.</p>
+
+<p>They were right on both counts. The disclosure was the easy half, so that shipped the same morning, and the listing, the README and the privacy policy now name Cloudflare as the host and spell out what it can see. While I was in there I pinned request logging off in <code>wrangler.toml</code>, because a privacy page that says the relay's own request logging is off shouldn't be one dashboard click away from being false.</p>
+
+<h2>Same code, different socket</h2>
+
+<p>I didn't rewrite the relay for this, and didn't want to. It's small: a request in, a request out, one SQL table. <code>relay/server.mjs</code> runs the exact Worker handler under <code>node:http</code>, and <code>relay/d1sqlite.mjs</code> wraps <code>node:sqlite</code> in the shape of D1. My tests were already running the relay against that same wrapper in memory, so a self-hosted server runs the code the tests run instead of a second copy that would slowly drift.</p>
+
+<p>What took thought were the jobs a Cloudflare edge used to do without anyone noticing.</p>
+
+<p>Client addresses were the big one. Rate limits are per address, and behind Apache or nginx every single request comes from the proxy. With <code>TRUST_PROXY=1</code> the server takes the client from <code>X-Forwarded-For</code>, but only the last entry, since the proxy right in front appended that one; anything earlier in the header is whatever the client decided to type. <code>cf-connecting-ip</code>, the header the Worker actually reads, gets overwritten on every request, so nobody picks their own.</p>
+
+<p>Expiry didn't change. Every row still goes after 24 hours, and busy channels sweep themselves, but a VPS has no cron trigger waiting for this, so an idle sweep runs every ten minutes.</p>
+
+<p>And oversized requests get a clean 413. The Worker already refuses anything over 2 KB. The Node side stops buffering at 64 KB instead of resetting the connection on someone halfway through an upload.</p>
+
+<h2>What review caught</h2>
+
+<p>This changed the landing page's wording, from "your own Cloudflare account" to "your own server", and that page's service worker serves it cache first. Without a new cache version, everyone who'd visited before would have kept seeing the old sentence until some unrelated change happened to touch <code>sw.js</code>. It's one line, and you'd never see the problem from the machine you test on.</p>
+
+<h2>Not verified yet</h2>
+
+<p>Nobody has run the Apache and nginx examples in <a href="https://github.com/munzzyy/starling/blob/main/docs/SELF-HOSTING.md">SELF-HOSTING.md</a> behind a real proxy. The tests and a live run cover the server, not those configs. The person who opened #9 offered to try it on their own Apache, and the doc will change with whatever breaks there.</p>
+
+<p>Calling something self-hostable is a promise about someone else's server. It ought to hold up on theirs.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>

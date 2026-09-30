@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A second place your location goes</title>
+<meta name="description" content="Someone wanted Starling to also feed their own Reitti and Home Assistant. Sending the data was easy. Making sure the feature can't be turned against the person holding the phone took the thought.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · Android apps</p>
+</header>
+
+<h1 class="post">A second place your location goes</h1>
+<p class="date">2026-09-30</p>
+
+<article>
+<p><a href="https://github.com/munzzyy/starling/issues/10">Issue #10</a> asked for something reasonable. The person runs colota-forwarder on their own server, which passes location updates on to Reitti for a timeline and Home Assistant for automations. Starling was the app their friends and family would actually use, but they didn't want two apps on their phone both working the GPS. Could Starling send their position to their own server too?</p>
+
+<p>Posting a JSON body to a URL is an afternoon. The question that took longer was what else that feature is. A setting that quietly sends your position to a second address is exactly what someone with access to your phone would set, and Starling already tells people to check who has access to their phone when a share stops unexpectedly. So the rule was that it stays loud, or it doesn't ship.</p>
+
+<h2>What loud means here</h2>
+
+<p>It only runs while you're sharing, and it only ever sends your own position, never your circle's. The sharing notification names the server ("Also sending to …") and so does the line under your name on the map, though the lock screen copy of the notification stays generic, so a locked phone lying on a table still gives nothing away. With the app lock on, setting, changing or clearing the address takes your passcode. The duress passcode gets refused there like any wrong one; wiping a phone from a settings screen would be a strange thing to do.</p>
+
+<p>Two smaller rules. The app only ever reads back the host, never the full address, because Reitti and Dawarich both put their key in the query string, so Settings and the data export show <code>relay.example.org</code> and nothing after it. And nothing goes out while Tor mode is on. Tor mode promises that nothing leaves the phone outside Tor, and a request from the native side would have.</p>
+
+<h2>Why the native side sends it</h2>
+
+<p>Everything else Starling sends goes out from the web page. This doesn't. A POST from the page to someone's forwarder is a cross-origin request, which only works if that server answers the browser's CORS check, and servers built for phone apps have no reason to. The page can also be frozen, which was <a href="the-five-minute-freeze.html">its own story</a>. So the Kotlin side sends it from the location service, in OwnTracks' HTTP format, at most every fifteen seconds, over https only, following no redirects, with a wake lock held just for the request.</p>
+
+<h2>Testing it without anyone's server</h2>
+
+<p>The app refuses anything but https, and release builds only trust the system's certificate authorities. For the emulator test, debug builds now also trust user-added ones, through a <code>debug-overrides</code> block that release builds ignore. With a throwaway CA, a certificate for <code>10.0.2.2</code> (the emulator's name for the machine it runs on) and a short Python receiver, I could watch the whole path.</p>
+
+<p>A wrong passcode left the setting alone. With the app in the background, screen off and the position moving, a post landed every fifteen seconds. Tor mode on: nothing for 35 seconds. Tor mode off again: three posts. After the share stopped, nothing at all.</p>
+
+<h2>What else turned up</h2>
+
+<p>Testing Tor showed me an older edge. Switching Tor mode reloads the page, and with the app lock on, the reloaded page sits on the lock screen while the location service keeps running until you type your passcode. The notification stays up the whole time, so it isn't silent, but for that window the app and the service disagree about whether you're sharing. That one is written down and not fixed yet.</p>
+
+<p>Nobody asked for the passcode prompt or the host-only readback. They're most of the work, and in a location app they're the part I'd want someone else to have thought about.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>

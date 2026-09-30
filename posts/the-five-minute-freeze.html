@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The five-minute freeze</title>
+<meta name="description" content="Location sharing kept stopping on locked Pixels, and every test I ran said it was fixed. None of those tests ran past five minutes, which is when Chromium freezes a hidden page.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · Android apps</p>
+</header>
+
+<h1 class="post">The five-minute freeze</h1>
+<p class="date">2026-09-30</p>
+
+<article>
+<p>Starling is a location-sharing app for families and small groups where the server only ever sees ciphertext. On Android it is a small Kotlin wrapper around a web app. The page does all the cryptography, so your position is encrypted and posted from JavaScript inside a WebView. The native side hands the page location fixes and runs a foreground service so Android lets a share keep going with the screen off.</p>
+
+<p><a href="https://github.com/munzzyy/starling/issues/6">Issue #6</a> started as "sharing doesn't survive closing the app" and became the longest thread the project has. Two people on Pixels kept testing each new release. Each release fixed something real: the app lock ending a share, a phone lying still never passing the distance filter, a crashed renderer taking the app down, a page call queued on a view that had no window. And each time the report came back the same. Lock the phone, put it down, and a few minutes later your dot on everyone else's map goes grey.</p>
+
+<h2>Every test passed</h2>
+
+<p>My checks for those fixes locked an emulator, fed it a moving position and counted what reached the relay. They all passed. They were also all shorter than five minutes, and that turned out to be the whole problem.</p>
+
+<p>The run that found it just waited longer: app in the background, screen off, Doze forced on, still moving. At 300 seconds the posts stopped. Fixes kept reaching the page, because the wrapper pushes each one in with <code>evaluateJavascript</code> and synchronous JavaScript still runs. Everything after that waited: the IndexedDB read, the WebCrypto seal and signature, the <code>fetch</code>, the timers. When the app came back to the front it all flushed at once, stamped with the time of the flush.</p>
+
+<p>That is Chromium's background freezing. A page that has been hidden for a while gets frozen, the same as a background tab. On the WebView in that emulator the delay was 300 seconds, and newer Chromium builds shorten it, which fits Pixels going grey within minutes. I had asked the people testing to try the usual suspects, the battery setting and their VPN, and they did, patiently. It changed nothing, because the cause was in the app.</p>
+
+<h2>The fix</h2>
+
+<p>I found no WebView setting that turns freezing off. What thaws a frozen page is visibility, so during a share the wrapper makes the page visible to Chromium for one second:</p>
+
+<pre><code>v.dispatchWindowVisibilityChanged(View.VISIBLE)
+main.postDelayed({
+    nudging = false
+    if (webView === v &amp;&amp; !windowShown) v.dispatchWindowVisibilityChanged(View.GONE)
+}, NUDGE_MS)</code></pre>
+
+<p>Nothing is drawn, since the real window is still hidden, but the page thaws and its freeze clock starts over. The nudge fires on the page's own <code>freeze</code> event, and a watchdog backs that up. Every fix pushed in is answered from a page task, which a frozen page never runs, so a push nobody answers means the page is frozen. A share that keeps going after the app is swiped away is harder, because a WebView with no window can never be made visible. That page moves into a window on a private virtual display that the app owns and never draws.</p>
+
+<p>One side effect needed care. During a nudge, <code>document.visibilityState</code> says "visible" while nobody is looking. Everything in the page that meant "the person is here" now asks the wrapper instead: notifications, the app lock's timer, the poll rate, the screen wake lock.</p>
+
+<h2>Measured this time</h2>
+
+<p>The check ran longer than the failure: eleven minutes in the background, screen off, deep Doze, moving. The page froze at 301 and 602 seconds and was woken both times. 139 posts went out and all 139 were accepted, never more than nine seconds apart.</p>
+
+<p>A few hours after 0.13.5 shipped, someone on Pixels running GrapheneOS wrote that it was working much better. That was the first word from real phones. The two Pixels from the original report haven't checked in yet.</p>
+
+<h2>What I'm taking from it</h2>
+
+<p>A test shorter than the failure is not a test. Every one of those earlier checks was honest and passing, and none of them could have failed, because none lasted long enough for the thing that was actually wrong. A debug build on an emulator can shorten Chromium's delay, which makes the freeze cheap to hit on purpose. Every background test I write now does that, or runs past the default.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>

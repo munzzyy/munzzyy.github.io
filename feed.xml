@@ -3,9 +3,41 @@
 <channel>
   <title>Cole Munz</title>
   <link>https://log.munzzyy.dev/</link>
-  <description>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. Build log: what broke, what I tried, what review caught.</description>
+  <description>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. Also the Android apps I ship. Build log: what broke, what I tried, what review caught.</description>
   <language>en-us</language>
-  <lastBuildDate>Sat, 29 Aug 2026 00:00:00 GMT</lastBuildDate>
+  <lastBuildDate>Wed, 30 Sep 2026 00:00:00 GMT</lastBuildDate>
+
+  <item>
+    <title>The five-minute freeze</title>
+    <link>https://log.munzzyy.dev/posts/the-five-minute-freeze.html</link>
+    <guid>https://log.munzzyy.dev/posts/the-five-minute-freeze.html</guid>
+    <pubDate>Wed, 30 Sep 2026 00:00:00 GMT</pubDate>
+    <description>Location sharing kept stopping on locked Pixels, and every test I ran said it was fixed. None of those tests ran past five minutes, which is when Chromium freezes a hidden page.</description>
+  </item>
+
+  <item>
+    <title>A relay that doesn't need Cloudflare</title>
+    <link>https://log.munzzyy.dev/posts/a-relay-without-cloudflare.html</link>
+    <guid>https://log.munzzyy.dev/posts/a-relay-without-cloudflare.html</guid>
+    <pubDate>Wed, 30 Sep 2026 00:00:00 GMT</pubDate>
+    <description>Starling's listing said self-hostable. Someone pointed out that meant self-hostable on Cloudflare, and that the listing never said who hosted the default relay. Both got fixed.</description>
+  </item>
+
+  <item>
+    <title>A second place your location goes</title>
+    <link>https://log.munzzyy.dev/posts/a-second-place-your-location-goes.html</link>
+    <guid>https://log.munzzyy.dev/posts/a-second-place-your-location-goes.html</guid>
+    <pubDate>Wed, 30 Sep 2026 00:00:00 GMT</pubDate>
+    <description>Someone wanted Starling to also feed their own Reitti and Home Assistant. Sending the data was easy. Making sure the feature can't be turned against the person holding the phone took the thought.</description>
+  </item>
+
+  <item>
+    <title>Three apps under the clock</title>
+    <link>https://log.munzzyy.dev/posts/three-apps-under-the-clock.html</link>
+    <guid>https://log.munzzyy.dev/posts/three-apps-under-the-clock.html</guid>
+    <pubDate>Wed, 30 Sep 2026 00:00:00 GMT</pubDate>
+    <description>A Pixel Fold's outer screen showed Sepia's top bar behind the clock and the camera. Android 15 made every app edge to edge, and three of mine had never noticed.</description>
+  </item>
 
   <item>
     <title>SPI with no wire in one direction</title>
