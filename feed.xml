@@ -5,7 +5,15 @@
   <link>https://log.munzzyy.dev/</link>
   <description>Embedded and firmware security: kernel drivers, device firmware, and the RF/SDR stack around them. Also the Android apps I ship. Build log: what broke, what I tried, what review caught.</description>
   <language>en-us</language>
-  <lastBuildDate>Wed, 30 Sep 2026 00:00:00 GMT</lastBuildDate>
+  <lastBuildDate>Thu, 15 Oct 2026 00:00:00 GMT</lastBuildDate>
+
+  <item>
+    <title>A remote the driver couldn't see</title>
+    <link>https://log.munzzyy.dev/posts/a-remote-the-driver-could-not-see.html</link>
+    <guid>https://log.munzzyy.dev/posts/a-remote-the-driver-could-not-see.html</guid>
+    <pubDate>Thu, 15 Oct 2026 00:00:00 GMT</pubDate>
+    <description>The EMEET C60E&apos;s remote zooms the picture, and Linux keeps reporting the old zoom until you unplug the camera. The driver trusts a cache the firmware never tells it to drop.</description>
+  </item>
 
   <item>
     <title>The five-minute freeze</title>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A remote the driver couldn't see</title>
+<meta name="description" content="The EMEET C60E's remote zooms the picture, and Linux keeps reporting the old zoom until you unplug the camera. The driver trusts a cache the firmware never tells it to drop.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+<header class="site">
+  <h1><a href="../index.html">Cole Munz</a></h1>
+  <p>build log · embedded and firmware security</p>
+</header>
+
+<h1 class="post">A remote the driver couldn't see</h1>
+<p class="date">2026-10-15</p>
+
+<article>
+<p>My new webcam, an EMEET SmartCam C60E 4K Dual, ships with a small IR remote. Zoom in and out, five fixed steps, focus, a lens switch, brightness, a few picture effects. Every button works on Linux out of the box, because the camera does the work itself and the host just receives a different picture. That turned out to be the problem. The picture changed and nothing on the host would admit it. <code>v4l2-ctl --get-ctrl=zoom_absolute</code> said 0 before I pressed 11X, said 0 after, and kept saying 0 until I unplugged the camera.</p>
+
+<h2>Where the stale value comes from</h2>
+
+<p>uvcvideo keeps a copy of every control value it has read. It goes back to the camera for a fresh one in two cases only: the control's GET_INFO reply flagged it AUTO_UPDATE, or the camera sent a status interrupt saying the control changed. This firmware does neither. It clears the AUTO_UPDATE bit on every control and never reports control changes on the interrupt endpoint. So the first read fills the cache, and the cache is the answer from then on. The driver is behaving the way the spec expects. A camera that changes a control on its own is supposed to say so.</p>
+
+<p>In the v7.2.8 source the chain is short. <code>uvc_ctrl_get_flags()</code> overwrites the control's flags with the byte the device sent. <code>__uvc_ctrl_load_cur()</code> returns the cached value when <code>ctrl->loaded</code> is set. <code>uvc_ctrl_commit_entity()</code> clears <code>loaded</code> again, but only for AUTO_UPDATE controls. Set that one flag and the existing code does the rest.</p>
+
+<h2>What I tried before touching the kernel</h2>
+
+<p>The camera has a vendor extension unit with ten selectors, two of them a kilobyte long, all with placeholder min and max values. Three of the small ones blink for about half a second whenever a remote button is pressed, which looked promising for an afternoon. It is a command mailbox for the camera's own SoC, the kind of channel a firmware updater talks to, and I was not going to write to something that might be the flash. Reading it told me a button had been pressed and not much else.</p>
+
+<p>There is also a vendor HID interface, which is how EMEET's own apps talk to the camera. I read their Windows app in Ghidra to recover the framing: 32-byte reports with a group, a sub-group and a command byte, and a fragment counter for payloads over 24 bytes. On this firmware the camera answers for its serial number, its version and the colour of the status light, and ignores the flip and mirror commands the Windows app knows. It also pushes one report of its own every time the zoom changes. That report says something changed and nothing more. Useful as a wake-up, useless as a value.</p>
+
+<h2>The quirk</h2>
+
+<p>So the fix went where the bug is. A new quirk bit, <code>UVC_QUIRK_FORCE_AUTO_UPDATE</code>, an entry in the device table for 328f:00e1, and three lines in <code>uvc_ctrl_get_flags()</code>:</p>
+
+<pre><code>if (dev->quirks &amp; UVC_QUIRK_FORCE_AUTO_UPDATE &amp;&amp;
+    info->flags &amp; UVC_CTRL_FLAG_GET_CUR)
+        info->flags |= UVC_CTRL_FLAG_AUTO_UPDATE;</code></pre>
+
+<p>Every readable control on this one camera is now treated as one the camera may change behind the driver's back, which is the truth. Other cameras are untouched. The cost is a USB control transfer per read instead of a cache hit, which nothing I run can feel. It builds out of tree from the v7.2.8 uvc sources, with the pristine files and their hashes next to the patched ones, and loads from <code>updates/</code> ahead of the stock module.</p>
+
+<p>The check is a script that reads the zoom, waits three seconds while you press a button, and reads it again. With the stock driver: 0 and 0. With the quirk: 0, 100, 200, 300, 400 as I walked the remote through 1X, 3X, 5X, 7X and 11X. Those five numbers are now what the control panel's own step buttons send, instead of the values I had estimated from frames earlier in the day.</p>
+
+<h2>Two things I got wrong first</h2>
+
+<p>The README said the DKMS flow was untested. It was, and it failed the first time it mattered. <code>dkms install</code> built the module and refused to install it, because the patched driver still called itself version 1.1.1, the same as the kernel's own, and DKMS will not install a module that is not newer than the one already in the tree. Afterwards <code>dkms status</code> just says built. The module now reports <code>1.1.1+emeet</code>, and a script does the move from the hand-installed copy to the DKMS one.</p>
+
+<p>The other one cost half a day. This camera accepts a change of exposure mode only while a video stream is running. Write it with the camera idle and the write is dropped with no error, and the next read returns the old mode. Every conclusion I drew that afternoon about manual exposure being brighter came from writes that never landed. The control panel now holds a short capture open around that write and reads the value back before believing it. The lesson is the same one the cache taught: a read proves nothing if it is served from memory, and a write proves nothing if the camera can drop it. Read it back from the camera, and look at a frame.</p>
+
+<p>The driver is at <a href="https://github.com/munzzyy/uvcvideo-emeet">uvcvideo-emeet</a>. The control panel that relies on it, a fork of cameractrls with the remote, the light and 4K added, is <a href="https://github.com/munzzyy/cameractrls-emeet">cameractrls-emeet</a>, and the streaming desk that sits on top of OBS is <a href="https://github.com/munzzyy/lark">lark</a>.</p>
+</article>
+
+<footer>
+  <a href="../index.html">← build log</a> · <a href="https://github.com/munzzyy">github.com/munzzyy</a> · <a href="mailto:Munzzyy1@proton.me">Munzzyy1@proton.me</a>
+</footer>
+</main>
+</body>
+</html>
